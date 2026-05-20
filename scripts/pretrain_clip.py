@@ -73,7 +73,7 @@ def main() -> None:
         d_text=text_encoder.embedding_dim,
         d_proj=cfg["projection"].get("d_proj", 256),
     ).to(device)
-    logit_scale = init_logit_scale().to(device)
+    logit_scale = torch.nn.Parameter(init_logit_scale().to(device))
 
     params = list(vit.parameters()) + list(proj_heads.parameters()) + [logit_scale]
     optimizer = AdamW(
