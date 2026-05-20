@@ -32,14 +32,19 @@ class PatchEmbeddings(nn.Module):
         self.img_size = img_size
         self.patch_size = patch_size
         self.num_patches = (img_size // patch_size) ** 2
-        # TODO: implement.
-        # Hint: use nn.Conv2d with kernel_size=patch_size, stride=patch_size,
-        # in_channels=3, out_channels=d_model. Then flatten the spatial dims
-        # and transpose so each patch is a token.
-        raise NotImplementedError
+        self.proj = nn.Conv2d(
+            in_channels=3,
+            out_channels=d_model,
+            kernel_size=patch_size,
+            stride=patch_size
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError
+        # x: (B, 3, img_size, img_size)
+        x = self.proj(x)  # (B, d_model, H/P, W/P)
+        x = x.flatten(2)  # (B, d_model, N)
+        x = x.transpose(1, 2)  # (B, N, d_model)
+        return x
 
 
 class ViT(nn.Module):
@@ -71,11 +76,31 @@ class ViT(nn.Module):
         dropout: float = 0.1,
     ) -> None:
         super().__init__()
-        # TODO: implement.
-        # Hint: store self.cls_token as nn.Parameter(torch.zeros(1, 1, d_model))
-        # and self.pos_embed as nn.Parameter(torch.zeros(1, num_patches+1, d_model)).
-        # Use basics.model.Block(..., is_decoder=False) for the encoder blocks.
-        raise NotImplementedError
+        from basics.model import Block
+        self.d_model = d_model
+        self.patch_size = patch_size
+        self.num_patches = (img_size // patch_size) ** 2
+        self.patch_embed = PatchEmbeddings(img_size, patch_size, d_model)
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + 1, d_model))
+        self.blocks = nn.ModuleList([
+            Block(
+                d_model=d_model,
+                num_heads=num_heads,
+                dropout=dropout,
+                block_size=self.num_patches + 1,
+                is_decoder=False
+            ) for _ in range(num_blocks)
+        ])
+        self.norm = nn.LayerNorm(d_model)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError
+        B = x.shape[0]
+        x = self.patch_embed(x)  # (B, N, d_model)
+        cls_token = self.cls_token.expand(B, -1, -1)  # (B, 1, d_model)
+        x = torch.cat([cls_token, x], dim=1)  # (B, N+1, d_model)
+        x = x + self.pos_embed  # (B, N+1, d_model)
+        for block in self.blocks:
+            x = block(x)
+        x = self.norm(x)
+        return x[:, 0]  # (B, d_model)
