@@ -133,13 +133,11 @@ def main() -> None:
             vit.eval()
             proj_heads.eval()
             with torch.no_grad():
-                # Build class prompts and encode
                 class_prompts = [f"a satellite image of {cls}" for cls in EUROSAT_CLASSES]
-                class_text_embeds = text_encoder(class_prompts).to(device)
-                class_text_proj = proj_heads.text_proj(class_text_embeds)
-                class_text_proj = class_text_proj / class_text_proj.norm(dim=-1, keepdim=True)
+                class_indices = list(range(len(class_prompts)))
                 val_acc = zeroshot_classification_accuracy(
-                    vit, proj_heads, val_loader, class_text_proj, device
+                    vit, proj_heads, text_encoder, val_loader,
+                    class_prompts, class_indices, device
                 )
             print(f"Epoch {epoch} val zero-shot acc: {val_acc:.4f}")
             if args.wandb:
