@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import json
 
 import torch
 import yaml
@@ -97,6 +98,15 @@ def main() -> None:
     num_epochs = cfg["train"]["num_epochs"]
     log_every = cfg["train"].get("log_every", 50)
     eval_every_epoch = cfg["train"].get("eval_every_epoch", 1)
+    metrics = {
+        "epoch": [],
+        "train_loss": [],
+        "val_acc": [],
+    }
+
+    def save_metrics() -> None:
+        with open(args.output_dir / "metrics.json", "w") as f:
+            json.dump(metrics, f, indent=2)
 
     for epoch in range(1, num_epochs + 1):
         vit.train()
@@ -125,6 +135,8 @@ def main() -> None:
 
         avg_loss = total_loss / total_batches
         print(f"Epoch {epoch} done. Avg train loss: {avg_loss:.4f}")
+        metrics["epoch"].append(epoch)
+        metrics["train_loss"].append(avg_loss)
         if args.wandb:
             wandb.log({"train/avg_loss": avg_loss, "epoch": epoch})
 
@@ -151,11 +163,15 @@ def main() -> None:
                     "val_acc": val_acc,
                     "epoch": epoch,
                 }
+            metrics["val_acc"].append(val_acc)
+            save_metrics()
 
     # Save best checkpoint
     if best_state is not None:
         torch.save(best_state, args.output_dir / "best.pt")
         print(f"Best model saved with val acc {best_val_acc:.4f}")
+    else:
+        save_metrics()
 
 
 if __name__ == "__main__":
