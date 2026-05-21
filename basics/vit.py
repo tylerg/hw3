@@ -94,7 +94,7 @@ class ViT(nn.Module):
         ])
         self.norm = nn.LayerNorm(d_model)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, return_all_tokens: bool = False) -> torch.Tensor:
         B = x.shape[0]
         x = self.patch_embed(x)  # (B, N, d_model)
         cls_token = self.cls_token.expand(B, -1, -1)  # (B, 1, d_model)
@@ -103,4 +103,6 @@ class ViT(nn.Module):
         for block in self.blocks:
             x = block(x)
         x = self.norm(x)
+        if return_all_tokens:
+            return x
         return x[:, 0]  # (B, d_model)
