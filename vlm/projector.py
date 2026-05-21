@@ -27,9 +27,20 @@ class VisionLanguageProjector(nn.Module):
 
     def __init__(self, d_image: int, d_decoder: int, expansion: int = 4) -> None:
         super().__init__()
-        # TODO: implement.
-        raise NotImplementedError
+        hidden_dim = expansion * d_image
+        self.mlp = nn.Sequential(
+            nn.Linear(d_image, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, d_decoder),
+        )
 
     def forward(self, image_features: torch.Tensor) -> torch.Tensor:
-        # TODO: handle both (B, d_image) and (B, N, d_image) inputs.
-        raise NotImplementedError
+        if image_features.ndim == 2:
+            image_features = image_features.unsqueeze(1)
+        elif image_features.ndim != 3:
+            raise ValueError(
+                f"image_features must have shape (B, d_image) or (B, N, d_image), got {image_features.shape}"
+            )
+
+        projected = self.mlp(image_features)
+        return projected
