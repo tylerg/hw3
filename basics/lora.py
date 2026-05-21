@@ -23,11 +23,14 @@ class LoRALinear(nn.Module):
         self.rank = rank
         self.alpha = alpha
         
+        # Use the same device and dtype as the base layer
+        factory_kwargs = {'device': base_layer.weight.device, 'dtype': base_layer.weight.dtype}
+        
         # 2. Initialize trainable low-rank matrices A and B
-        self.A = nn.Parameter(torch.empty(rank, base_layer.in_features))
+        self.A = nn.Parameter(torch.empty(rank, base_layer.in_features, **factory_kwargs))
         nn.init.kaiming_uniform_(self.A, a=math.sqrt(5))
         
-        self.B = nn.Parameter(torch.zeros(base_layer.out_features, rank))
+        self.B = nn.Parameter(torch.zeros(base_layer.out_features, rank, **factory_kwargs))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Returns base_layer(x) + (alpha / rank) * (x @ A.T @ B.T)
