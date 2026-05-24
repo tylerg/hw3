@@ -29,3 +29,11 @@ generation:
   do_sample: false
   temperature: 1.0
   top_p: 1.0
+
+vit:
+  img_size: 224
+  patch_size: 16
+  d_model: 768
+  num_heads: 12
+  num_blocks: 12
+  dropout: 0.1

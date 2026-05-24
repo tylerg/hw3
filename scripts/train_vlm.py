@@ -40,6 +40,12 @@ def parse_args() -> argparse.Namespace:
         help="Per writeup §5.6: A=projector only, B=+decoder LoRA, "
              "C=+full decoder, D=all three.",
     )
+    # BUGFIX: Added missing --run-all flag referenced in main()
+    p.add_argument(
+        "--run-all",
+        action="store_true",
+        help="Run all injection modes (cls, all_patches, interleaved)"
+    )
     p.add_argument("--output-dir", type=Path, default=None)
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     return p.parse_args()
