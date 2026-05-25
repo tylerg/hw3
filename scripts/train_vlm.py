@@ -249,7 +249,7 @@ def main() -> None:
             tokenizer.add_special_tokens({"additional_special_tokens": ["<image>"]})
         decoder = AutoModelForCausalLM.from_pretrained(
             cfg["decoder"]["model_name"],
-            torch_dtype=decoder_dtype,
+            dtype=decoder_dtype,
             attn_implementation=cfg["decoder"]["attn_implementation"],
         ).to(device)
         if args.injection == "interleaved":
