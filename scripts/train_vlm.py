@@ -224,18 +224,21 @@ def evaluate_model(
             mask_mode=mask_mode,
         )
 
-        position_ids = torch.arange(
-            inputs_embeds.size(1),
-            device=device,
-            dtype=torch.long,
-        ).unsqueeze(0).expand(inputs_embeds.size(0), -1)
+        # HF generate() does NOT support custom 4D masks correctly for LLaMA.
+        # Use a standard 2D mask during generation.
 
-        print(gen_attention_mask.shape)
-        
+        if gen_attention_mask.ndim == 4:
+            generation_attention_mask = torch.ones(
+                inputs_embeds.shape[:2],
+                device=device,
+                dtype=torch.long,
+            )
+        else:
+            generation_attention_mask = gen_attention_mask
+
         generated = model.decoder.generate(
-            input_ids=input_ids,
             inputs_embeds=inputs_embeds,
-            attention_mask=gen_attention_mask,
+            attention_mask=generation_attention_mask,
             max_new_tokens=4,
             do_sample=False,
             pad_token_id=tokenizer.pad_token_id,
