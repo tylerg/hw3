@@ -246,20 +246,18 @@ def evaluate_model(
             use_cache=True,
         )
 
-        predicted_ids = generated[:, input_ids.size(1):]
-
-        batch_preds = tokenizer.batch_decode(
-            predicted_ids,
-            skip_special_tokens=True,
-        )
+        # Decode generated token IDs to text
+        batch_preds = tokenizer.batch_decode(generated, skip_special_tokens=True)
+        
+        # Normalize and print
         batch_preds = [normalize_answer(x) for x in batch_preds]
+
         if processed == 0:
             for i in range(min(5, len(batch_preds))):
                 print("QUESTION:", questions[i])
                 print("PRED:", repr(batch_preds[i]))
                 print("GOLD:", repr(answers[i]))
                 print()
-        batch_preds = [normalize_answer(x) for x in batch_preds]
         predictions.extend(batch_preds)
         golds.extend([normalize_answer(x) for x in answers])
         processed += len(answers)
