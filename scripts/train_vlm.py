@@ -17,6 +17,9 @@ from pathlib import Path
 import torch
 import yaml
 
+# Add tqdm for progress bars
+from tqdm import tqdm
+
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
@@ -164,12 +167,13 @@ def evaluate_model(
     model.projector.eval()
     model.decoder.eval()
 
+
     predictions: list[str] = []
     golds: list[str] = []
     q_types: list[str] = []
     processed = 0
 
-    for batch in val_loader:
+    for batch in tqdm(val_loader, desc="Evaluating", total=max_eval):
         if processed >= max_eval:
             break
 
@@ -291,6 +295,7 @@ def main() -> None:
     if args.run_all:
         injection_modes = ["cls", "all_patches", "interleaved"]
 
+
     for injection in injection_modes:
         experiment_dir = args.output_dir
         if args.run_all:
@@ -356,7 +361,8 @@ def main() -> None:
         step_times: list[float] = []
         peak_memory = 0
 
-        while step < num_steps:
+        # Add tqdm progress bar for training steps
+        for _ in tqdm(range(num_steps), desc=f"Training ({injection})"):
             batch = next(train_iter)
             images = batch["image"].to(device)
             input_ids, attention_mask, labels = prepare_train_batch(
