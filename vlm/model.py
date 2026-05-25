@@ -97,7 +97,13 @@ class VisionLanguageModel(nn.Module):
             visual_features = self.vit(images, return_all_tokens=True)
 
         visual_embeds = self.projector(visual_features)
+
+        dtype = next(self.decoder.parameters()).dtype
+
+        visual_embeds = visual_embeds.to(dtype)
+
         text_embeds = self.decoder.get_input_embeddings()(input_ids)
+        text_embeds = text_embeds.to(dtype)
 
         if injection == "interleaved":
             inputs_embeds, attention_mask, labels, visual_ranges = self._build_interleaved_inputs(
