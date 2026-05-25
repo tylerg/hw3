@@ -295,18 +295,23 @@ class VisionLanguageModel(nn.Module):
         batch_size, seq_len = attention_mask.shape
         device = attention_mask.device
         neg_inf = torch.finfo(dtype).min
+        
+        # 1. Base causal mask
         base = torch.full((seq_len, seq_len), neg_inf, device=device, dtype=dtype)
         base = torch.triu(base, diagonal=1)
         mask = base.unsqueeze(0).unsqueeze(0).expand(batch_size, -1, -1, -1).clone()
 
+        # 2. Open up bidirectional attention within visual blocks
         for batch_index, ranges in enumerate(visual_ranges):
             for start, end in ranges:
-                mask[batch_index, :, start:end, start:end] = 0
+                mask[batch_index, :, start:end, start:end] = 0.0
 
+        # 3. Apply padding mask safely using masked_fill
         pad_mask = attention_mask == 0
         if pad_mask.any():
-            mask = mask + pad_mask.unsqueeze(1).unsqueeze(2) * neg_inf
-            mask = mask + pad_mask.unsqueeze(1).unsqueeze(-1) * neg_inf
+            mask = mask.masked_fill(pad_mask.unsqueeze(1).unsqueeze(2), neg_inf)
+            mask = mask.masked_fill(pad_mask.unsqueeze(1).unsqueeze(-1), neg_inf)
+            
         return mask
 
     @torch.no_grad()
