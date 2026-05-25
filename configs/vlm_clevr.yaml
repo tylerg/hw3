@@ -3,7 +3,7 @@
 decoder:
   model_name: HuggingFaceTB/SmolLM2-360M-Instruct
   torch_dtype: bfloat16
-  attn_implementation: flash_attention_2
+  attn_implementation: sdpa
 
 projector:
   expansion: 4
