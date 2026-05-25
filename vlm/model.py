@@ -117,6 +117,7 @@ class VisionLanguageModel(nn.Module):
                 attention_mask = self._build_interleaved_bidir_mask(
                     attention_mask=attention_mask,
                     visual_ranges=visual_ranges,
+                    dtype=dtype,
                 )
         else:
             inputs_embeds = torch.cat([visual_embeds, text_embeds], dim=1)
@@ -289,9 +290,9 @@ class VisionLanguageModel(nn.Module):
         self,
         attention_mask: torch.Tensor,
         visual_ranges: list[list[tuple[int, int]]],
+        dtype: torch.dtype,
     ) -> torch.Tensor:
         batch_size, seq_len = attention_mask.shape
-        dtype = attention_mask.dtype if attention_mask.is_floating_point() else torch.float32
         device = attention_mask.device
         neg_inf = torch.finfo(dtype).min
         base = torch.full((seq_len, seq_len), neg_inf, device=device, dtype=dtype)
