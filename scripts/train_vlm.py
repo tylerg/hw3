@@ -107,7 +107,13 @@ def build_vlm_inputs(
     else:
         visual_features = model.vit(images, return_all_tokens=True)
     visual_embeds = model.projector(visual_features)
+
+    dtype = next(model.decoder.parameters()).dtype
+
+    visual_embeds = visual_embeds.to(dtype)
+
     text_embeds = model.decoder.get_input_embeddings()(input_ids)
+    text_embeds = text_embeds.to(dtype)
 
     if injection == "interleaved":
         inputs_embeds, attention_mask, _, visual_ranges = model._build_interleaved_inputs(
