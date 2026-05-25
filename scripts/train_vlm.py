@@ -230,20 +230,25 @@ def evaluate_model(
             dtype=torch.long,
         ).unsqueeze(0).expand(inputs_embeds.size(0), -1)
 
+        print(gen_attention_mask.shape)
+        
         generated = model.decoder.generate(
+            input_ids=input_ids,
             inputs_embeds=inputs_embeds,
-            position_ids=position_ids,
-            max_new_tokens=generation_cfg.get("max_new_tokens", 32),
-            do_sample=generation_cfg.get("do_sample", False),
-            temperature=generation_cfg.get("temperature", 1.0),
-            top_p=generation_cfg.get("top_p", 1.0),
+            attention_mask=gen_attention_mask,
+            max_new_tokens=4,
+            do_sample=False,
             pad_token_id=tokenizer.pad_token_id,
             eos_token_id=tokenizer.eos_token_id,
             use_cache=True,
         )
 
-        generated_ids = generated[:, input_ids.size(1):]
-        batch_preds = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+        predicted_ids = generated[:, input_ids.size(1):]
+
+        batch_preds = tokenizer.batch_decode(
+            predicted_ids,
+            skip_special_tokens=True,
+        )
         batch_preds = [normalize_answer(x) for x in batch_preds]
         if processed == 0:
             for i in range(min(5, len(batch_preds))):
