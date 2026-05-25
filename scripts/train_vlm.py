@@ -210,7 +210,6 @@ def evaluate_model(
 
         generated = model.decoder.generate(
             inputs_embeds=inputs_embeds,
-            attention_mask=gen_attention_mask,
             position_ids=position_ids,
             max_new_tokens=generation_cfg.get("max_new_tokens", 32),
             do_sample=generation_cfg.get("do_sample", False),
@@ -218,10 +217,10 @@ def evaluate_model(
             top_p=generation_cfg.get("top_p", 1.0),
             pad_token_id=tokenizer.pad_token_id,
             eos_token_id=tokenizer.eos_token_id,
+            use_cache=True,
         )
 
-        prefix_len = inputs_embeds.size(1)
-        predicted_ids = generated[:, prefix_len:]
+        predicted_ids = generated
         batch_preds = tokenizer.batch_decode(predicted_ids, skip_special_tokens=True)
         predictions.extend(batch_preds)
         golds.extend(answers)
