@@ -20,6 +20,28 @@ import yaml
 # Add tqdm for progress bars
 from tqdm import tqdm
 
+import re
+
+def normalize_answer(text: str) -> str:
+    text = text.lower().strip()
+
+    # remove common prefixes
+    prefixes = [
+        "answer:",
+        "the answer is",
+        "answer is",
+    ]
+
+    for p in prefixes:
+        if text.startswith(p):
+            text = text[len(p):].strip()
+
+    # keep only first token-ish answer
+    text = re.split(r"[.,\n]", text)[0]
+    text = text.strip()
+
+    return text
+
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
@@ -220,10 +242,18 @@ def evaluate_model(
             use_cache=True,
         )
 
-        predicted_ids = generated
-        batch_preds = tokenizer.batch_decode(predicted_ids, skip_special_tokens=True)
+        generated_ids = generated[:, input_ids.size(1):]
+        batch_preds = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+        batch_preds = [normalize_answer(x) for x in batch_preds]
+        if processed == 0:
+            for i in range(min(5, len(batch_preds))):
+                print("QUESTION:", questions[i])
+                print("PRED:", repr(batch_preds[i]))
+                print("GOLD:", repr(answers[i]))
+                print()
+        batch_preds = [normalize_answer(x) for x in batch_preds]
         predictions.extend(batch_preds)
-        golds.extend(answers)
+        golds.extend([normalize_answer(x) for x in answers])
         processed += len(answers)
 
     return batch_clevr_accuracy(predictions[:max_eval], golds[:max_eval], q_types[:max_eval])
@@ -257,21 +287,21 @@ def main() -> None:
     from vlm.projector import VisionLanguageProjector
     from basics.vit import ViT
 
-    def load_decoder_and_tokenizer() -> tuple[object, object, int | None]:
+    def load_decoder_and_tokenizer(current_injection: str) -> tuple[object, object, int | None]:
         tokenizer = AutoTokenizer.from_pretrained(cfg["decoder"]["model_name"])
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
-        if args.injection == "interleaved":
+        if current_injection == "interleaved":
             tokenizer.add_special_tokens({"additional_special_tokens": ["<image>"]})
         decoder = AutoModelForCausalLM.from_pretrained(
             cfg["decoder"]["model_name"],
             dtype=decoder_dtype,
             attn_implementation=cfg["decoder"]["attn_implementation"],
         ).to(device)
-        if args.injection == "interleaved":
+        if current_injection == "interleaved":
             decoder.resize_token_embeddings(len(tokenizer))
         image_token_id = None
-        if args.injection == "interleaved":
+        if current_injection == "interleaved":
             image_token_id = tokenizer.convert_tokens_to_ids("<image>")
         return tokenizer, decoder, image_token_id
 
@@ -308,7 +338,7 @@ def main() -> None:
             experiment_dir = args.output_dir / injection
             experiment_dir.mkdir(parents=True, exist_ok=True)
 
-        tokenizer, decoder, image_token_id = load_decoder_and_tokenizer()
+        tokenizer, decoder, image_token_id = load_decoder_and_tokenizer(injection)
         vit = load_vit()
         projector = VisionLanguageProjector(
             d_image=cfg["vit"]["d_model"],
