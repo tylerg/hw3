@@ -62,6 +62,9 @@ def main() -> None:
         num_heads=cfg["vit"]["num_heads"],
         num_blocks=cfg["vit"]["num_blocks"],
         dropout=cfg["vit"].get("dropout", 0.1),
+        pos_encoding=cfg["vit"].get("pos_encoding", "learned"),
+        max_seq_len=cfg["vit"].get("max_seq_len", 196),
+        rope_base=cfg["vit"].get("rope_base", 10_000.0),
     ).to(device)
     text_encoder = FrozenTextEncoder(cfg["text_encoder"]["model_name"])
     text_encoder.eval()
@@ -166,12 +169,75 @@ def main() -> None:
             metrics["val_acc"].append(val_acc)
             save_metrics()
 
+
     # Save best checkpoint
     if best_state is not None:
         torch.save(best_state, args.output_dir / "best.pt")
         print(f"Best model saved with val acc {best_val_acc:.4f}")
     else:
         save_metrics()
+
+    # --- Extrapolation evaluation on upsampled images (96x96, patch_size=8, 12x12 patches) ---
+    print("\nExtrapolation evaluation (96x96 images, 12x12 patches)...")
+    # Build upsampled val_loader
+    up_img_size = 96
+    up_num_patches = (up_img_size // cfg["vit"]["patch_size"]) ** 2
+    up_vit = ViT(
+        img_size=up_img_size,
+        patch_size=cfg["vit"]["patch_size"],
+        d_model=cfg["vit"]["d_model"],
+        num_heads=cfg["vit"]["num_heads"],
+        num_blocks=cfg["vit"]["num_blocks"],
+        dropout=cfg["vit"].get("dropout", 0.1),
+        pos_encoding=cfg["vit"].get("pos_encoding", "learned"),
+        max_seq_len=cfg["vit"].get("max_seq_len", 196),
+        rope_base=cfg["vit"].get("rope_base", 10_000.0),
+    ).to(device)
+    # Load weights (except positional embedding if learned)
+    state_dict = vit.state_dict()
+    up_state_dict = up_vit.state_dict()
+    # Interpolate positional embeddings if learned
+    if cfg["vit"].get("pos_encoding", "learned") == "learned":
+        # Interpolate patch pos_embed (exclude CLS)
+        pos_embed = state_dict["pos_embed"]  # (1, old_num_patches+1, d_model)
+        cls_pos = pos_embed[:, :1, :]
+        patch_pos = pos_embed[:, 1:, :]  # (1, old_num_patches, d_model)
+        old_side = int(patch_pos.shape[1] ** 0.5)
+        new_side = int(up_num_patches ** 0.5)
+        patch_pos = patch_pos.reshape(1, old_side, old_side, -1).permute(0, 3, 1, 2)  # (1, d_model, old, old)
+        patch_pos_up = torch.nn.functional.interpolate(
+            patch_pos, size=(new_side, new_side), mode="bicubic", align_corners=False
+        )
+        patch_pos_up = patch_pos_up.permute(0, 2, 3, 1).reshape(1, new_side * new_side, -1)
+        up_state_dict["pos_embed"] = torch.cat([cls_pos, patch_pos_up], dim=1)
+        # Copy other weights
+        for k in up_state_dict:
+            if k != "pos_embed" and k in state_dict and up_state_dict[k].shape == state_dict[k].shape:
+                up_state_dict[k] = state_dict[k]
+        up_vit.load_state_dict(up_state_dict)
+    else:
+        # RoPE: just copy all matching weights
+        for k in up_state_dict:
+            if k in state_dict and up_state_dict[k].shape == state_dict[k].shape:
+                up_state_dict[k] = state_dict[k]
+        up_vit.load_state_dict(up_state_dict)
+
+    # Build upsampled val_loader
+    _, up_val_loader, _ = build_eurosat_loaders(
+        img_size=up_img_size,
+        batch_size=cfg["train"]["batch_size"],
+        num_workers=cfg["train"].get("num_workers", 4),
+    )
+    up_vit.eval()
+    proj_heads.eval()
+    with torch.no_grad():
+        class_prompts = [f"a satellite image of {cls}" for cls in EUROSAT_CLASSES]
+        class_indices = list(range(len(class_prompts)))
+        up_val_acc = zeroshot_classification_accuracy(
+            up_vit, proj_heads, text_encoder, up_val_loader,
+            class_prompts, class_indices, device
+        )
+    print(f"Extrapolation val zero-shot acc: {up_val_acc:.4f}")
 
 
 if __name__ == "__main__":

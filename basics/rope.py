@@ -37,21 +37,34 @@ class RoPE1D(nn.Module):
         self.max_seq_len = max_seq_len
         self.base = base
 
-        # TODO: precompute cos and sin tables of shape (max_seq_len, head_dim // 2)
-        # and register them as non-persistent buffers.
-        # Hint:
-        #   inv_freq = base ** (-torch.arange(0, head_dim, 2).float() / head_dim)
-        #   t = torch.arange(max_seq_len).float()
-        #   freqs = torch.outer(t, inv_freq)              # (max_seq_len, head_dim // 2)
-        #   self.register_buffer("cos_cached", freqs.cos(), persistent=False)
-        #   self.register_buffer("sin_cached", freqs.sin(), persistent=False)
-        raise NotImplementedError
+        # Precompute cos and sin tables
+        inv_freq = base ** (-torch.arange(0, head_dim, 2).float() / head_dim)  # (head_dim//2,)
+        t = torch.arange(max_seq_len).float()  # (max_seq_len,)
+        freqs = torch.outer(t, inv_freq)  # (max_seq_len, head_dim//2)
+        self.register_buffer("cos_cached", freqs.cos(), persistent=False)
+        self.register_buffer("sin_cached", freqs.sin(), persistent=False)
 
     def forward(self, x: torch.Tensor, positions: torch.Tensor) -> torch.Tensor:
-        # TODO: implement.
-        # Hint: split x into even and odd indices along head_dim, look up
-        # cos/sin for the given positions, and apply the 2D rotation.
-        raise NotImplementedError
+        # x: (B, num_heads, T, head_dim)
+        # positions: (T,)
+        B, num_heads, T, D = x.shape
+        assert D == self.head_dim
+        # Get cos/sin for positions (T, D//2)
+        cos = self.cos_cached[positions]  # (T, D//2)
+        sin = self.sin_cached[positions]  # (T, D//2)
+        # Expand to (1, 1, T, D//2)
+        cos = cos.unsqueeze(0).unsqueeze(0)
+        sin = sin.unsqueeze(0).unsqueeze(0)
+        # Split x into even and odd parts
+        x_even = x[..., ::2]  # (B, num_heads, T, D//2)
+        x_odd = x[..., 1::2]  # (B, num_heads, T, D//2)
+        # Apply rotation
+        x_rotated_even = x_even * cos - x_odd * sin
+        x_rotated_odd = x_even * sin + x_odd * cos
+        # Interleave even and odd back
+        x_out = torch.stack([x_rotated_even, x_rotated_odd], dim=-1)  # (B, num_heads, T, D//2, 2)
+        x_out = x_out.flatten(-2)  # (B, num_heads, T, D)
+        return x_out
 
 
 class RoPE2D(nn.Module):

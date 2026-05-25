@@ -48,22 +48,12 @@ class PatchEmbeddings(nn.Module):
 
 
 class ViT(nn.Module):
-    """Vision Transformer.
-
-    Pipeline:
-      1. Patchify with `PatchEmbeddings`.
-      2. Prepend a learnable [CLS] token.
-      3. Add a learnable positional embedding of shape (1, num_patches+1, d_model).
-      4. Pass the sequence through `num_blocks` Transformer Blocks
-         (with is_decoder=False).
-      5. Apply a final LayerNorm.
-      6. Return only the [CLS] slice — shape (B, d_model).
-
-    For §5 (VLM), you may want a `return_all_tokens=True` flag that returns the
-    full (B, num_patches+1, d_model) sequence instead. Add it when you get there.
+    """Vision Transformer with selectable positional encoding (learned or RoPE).
 
     Args:
         img_size, patch_size, d_model, num_heads, num_blocks, dropout
+        pos_encoding: 'learned' (default) or 'rope'
+        max_seq_len: for RoPE, maximum sequence length (patches+1)
     """
 
     def __init__(
@@ -74,6 +64,9 @@ class ViT(nn.Module):
         num_heads: int,
         num_blocks: int,
         dropout: float = 0.1,
+        pos_encoding: str = "learned",
+        max_seq_len: int = 196,
+        rope_base: float = 10_000.0,
     ) -> None:
         super().__init__()
         from basics.model import Block
@@ -82,7 +75,7 @@ class ViT(nn.Module):
         self.num_patches = (img_size // patch_size) ** 2
         self.patch_embed = PatchEmbeddings(img_size, patch_size, d_model)
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
-        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + 1, d_model))
+        self.pos_encoding = pos_encoding
         self.blocks = nn.ModuleList([
             Block(
                 d_model=d_model,
@@ -94,14 +87,32 @@ class ViT(nn.Module):
         ])
         self.norm = nn.LayerNorm(d_model)
 
+        if pos_encoding == "learned":
+            self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + 1, d_model))
+        elif pos_encoding == "rope":
+            from basics.rope import RoPE1D
+            self.rope = RoPE1D(
+                head_dim=d_model // num_heads,
+                max_seq_len=max_seq_len,
+                base=rope_base,
+            )
+        else:
+            raise ValueError(f"Unknown pos_encoding: {pos_encoding}")
+
     def forward(self, x: torch.Tensor, return_all_tokens: bool = False) -> torch.Tensor:
         B = x.shape[0]
         x = self.patch_embed(x)  # (B, N, d_model)
         cls_token = self.cls_token.expand(B, -1, -1)  # (B, 1, d_model)
         x = torch.cat([cls_token, x], dim=1)  # (B, N+1, d_model)
-        x = x + self.pos_embed  # (B, N+1, d_model)
+
+        if self.pos_encoding == "learned":
+            x = x + self.pos_embed  # (B, N+1, d_model)
+        elif self.pos_encoding == "rope":
+            # RoPE is applied inside attention, so pass a flag to Block
+            pass  # See Block implementation; RoPE is applied in attention
+
         for block in self.blocks:
-            x = block(x)
+            x = block(x, rope=self.rope if self.pos_encoding == "rope" else None)
         x = self.norm(x)
         if return_all_tokens:
             return x
