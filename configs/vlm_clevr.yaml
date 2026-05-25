@@ -34,6 +34,6 @@ vit:
   img_size: 224
   patch_size: 16
   d_model: 768
-  num_heads: 12
-  num_blocks: 12
+  num_heads: 6
+  num_blocks: 6
   dropout: 0.1
