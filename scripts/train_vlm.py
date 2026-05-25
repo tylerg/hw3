@@ -202,9 +202,16 @@ def evaluate_model(
             mask_mode=mask_mode,
         )
 
+        position_ids = torch.arange(
+            inputs_embeds.size(1),
+            device=device,
+            dtype=torch.long,
+        ).unsqueeze(0).expand(inputs_embeds.size(0), -1)
+
         generated = model.decoder.generate(
             inputs_embeds=inputs_embeds,
             attention_mask=gen_attention_mask,
+            position_ids=position_ids,
             max_new_tokens=generation_cfg.get("max_new_tokens", 32),
             do_sample=generation_cfg.get("do_sample", False),
             temperature=generation_cfg.get("temperature", 1.0),
