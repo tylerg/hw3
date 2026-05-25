@@ -152,6 +152,7 @@ def build_vlm_inputs(
             attention_mask = model._build_interleaved_bidir_mask(
                 attention_mask=attention_mask,
                 visual_ranges=visual_ranges,
+                dtype=dtype,
             )
     else:
         prefix_mask = torch.ones(
